@@ -252,6 +252,7 @@ CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) UNIQUE NOT NULL,
     face_descriptor BLOB DEFAULT NULL COMMENT '128维人脸特征向量',
+    password_hash VARCHAR(64) DEFAULT NULL COMMENT '密码SHA256哈希',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP NULL,
     INDEX idx_username (username)
@@ -538,4 +539,3 @@ drwxr-xr-x 32 root root    4096 11月 16 01:22 ..
 cd ~/QtBase/FaceServerQt/build
 ./FaceServer
 ```
-

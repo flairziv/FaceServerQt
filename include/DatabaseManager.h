@@ -7,7 +7,6 @@
 #include <QSqlError>
 #include <QVector>
 #include <QVariantMap>
-#include <QString>
 
 class DatabaseManager : public QObject
 {
@@ -20,24 +19,38 @@ public:
     // 初始化数据库连接
     bool initialize(const QString &host, int port, const QString &dbName,
                    const QString &user, const QString &password);
-    
-    // 创建表
-    bool createTables();
-    
+
     // 用户操作
     bool userExists(const QString &username);
+    
+    // 插入用户(重载方法)
     bool insertUser(const QString &username, const QVector<float> &faceDescriptor);
+    bool insertUser(const QString &username, const QVector<float> &faceDescriptor, 
+                   const QString &passwordHash);
+    
+    // 查询用户数据
     QVector<float> getUserDescriptor(const QString &username);
+    QString getUserPassword(const QString &username);
+    QVariantMap getUserInfo(const QString &username);
     QVector<QVariantMap> getAllUsers();
+    
+    // 更新用户数据
+    bool updateLastLogin(const QString &username);
+    bool updateUserPassword(const QString &username, const QString &newPasswordHash);
+    bool updateUserDescriptor(const QString &username, const QVector<float> &newDescriptor);
+    
+    // 删除用户
     bool deleteUser(const QString &username);
+    
+    // 统计
+    int getUserCount();
 
 private:
-    QSqlDatabase m_db;
-    
-    // 辅助函数：将 QVector<float> 转换为 BLOB
-    // 将 QVector<float> 类型的面部特征描述符序列化为二进制数据（QByteArray），方便后续存储到数据库中
+    bool createTables();
     QByteArray descriptorToBlob(const QVector<float> &descriptor);
     QVector<float> blobToDescriptor(const QByteArray &blob);
+
+    QSqlDatabase m_db;
 };
 
 #endif // DATABASEMANAGER_H
