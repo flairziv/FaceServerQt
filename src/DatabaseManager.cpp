@@ -38,7 +38,6 @@ bool DatabaseManager::createTables()
 {
     QSqlQuery query(m_db);
     
-    // 更新表结构,添加 password_hash 和 last_login 字段
     QString createTableSQL = R"(
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -95,13 +94,7 @@ bool DatabaseManager::userExists(const QString &username)
     return false;
 }
 
-// 重载方法1: 只插入人脸特征(兼容旧代码)
-bool DatabaseManager::insertUser(const QString &username, const QVector<float> &faceDescriptor)
-{
-    return insertUser(username, faceDescriptor, QString());
-}
-
-// 重载方法2: 插入人脸特征和密码哈希
+// 插入人脸特征和密码哈希
 bool DatabaseManager::insertUser(const QString &username, const QVector<float> &faceDescriptor, 
                                 const QString &passwordHash)
 {

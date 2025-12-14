@@ -91,7 +91,7 @@ QVector<float> FaceRecognizer::extractDescriptorFromBase64(const QString &base64
         // 获取人脸关键点
         dlib::full_object_detection shape = m_shapePredictor(dlibImage, faces[0]);
 
-        // 提取人脸区域（face chip）
+        // 提取人脸区域
         dlib::matrix<dlib::rgb_pixel> faceChip;
         dlib::extract_image_chip(dlibImage, dlib::get_face_chip_details(shape, 150, 0.25), faceChip);
 

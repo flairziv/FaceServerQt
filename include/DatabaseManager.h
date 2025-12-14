@@ -23,10 +23,8 @@ public:
     // 用户操作
     bool userExists(const QString &username);
     
-    // 插入用户(重载方法)
-    bool insertUser(const QString &username, const QVector<float> &faceDescriptor);
-    bool insertUser(const QString &username, const QVector<float> &faceDescriptor, 
-                   const QString &passwordHash);
+    // 插入用户
+    bool insertUser(const QString &username, const QVector<float> &faceDescriptor, const QString &passwordHash);
     
     // 查询用户数据
     QVector<float> getUserDescriptor(const QString &username);
