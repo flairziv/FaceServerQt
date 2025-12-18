@@ -120,6 +120,46 @@ Content-Type: application/json
 }
 ```
 
+### 访问需要认证的 API（需要 token）
+
+```bash
+// 获取用户信息
+const getUserInfo = async () => {
+  const token = localStorage.getItem('token'); // 从存储中获取token
+  
+  const response = await fetch('http://localhost:3000/api/user/info', {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}` // ✅ 必须添加 Bearer token
+    }
+  });
+  
+  const data = await response.json();
+  console.log(data);
+};
+
+// 修改密码
+const changePassword = async () => {
+  const token = localStorage.getItem('token');
+  
+  const response = await fetch('http://localhost:3000/api/user/password', {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}` // ✅ 必须添加
+    },
+    body: JSON.stringify({
+      oldPassword: 'old123',
+      newPassword: 'new456'
+    })
+  });
+  
+  const data = await response.json();
+  console.log(data);
+};
+
+```
+
 ## 📁 项目结构
 
 ```
