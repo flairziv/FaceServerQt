@@ -20,6 +20,49 @@ QString hashPassword(const QString &password)
                        .toHex());
 }
 
+// 辅助函数:从请求头提取并验证JWT token
+bool extractAndVerifyToken(const httplib::Request &req, QString &username, httplib::Response &res)
+{
+    // 获取 Authorization 头
+    auto authHeader = req.get_header_value("Authorization");
+    if (authHeader.empty()) {
+        QJsonObject response;
+        response["success"] = false;
+        response["message"] = "缺少认证token";
+        res.status = 401;
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json");
+        return false;
+    }
+
+    // 提取 Bearer token
+    QString authStr = QString::fromStdString(authHeader);
+    if (!authStr.startsWith("Bearer ")) {
+        QJsonObject response;
+        response["success"] = false;
+        response["message"] = "无效的认证格式,请使用: Bearer <token>";
+        res.status = 401;
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json");
+        return false;
+    }
+
+    QString token = authStr.mid(7); // 移除 "Bearer " 前缀
+
+    // 验证 token
+    if (!JwtHelper::verifyToken(token, username)) {
+        QJsonObject response;
+        response["success"] = false;
+        response["message"] = "token无效或已过期";
+        res.status = 401;
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json");
+        return false;
+    }
+
+    return true;
+}
+
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
@@ -265,6 +308,131 @@ int main(int argc, char *argv[])
         
         res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
                     "application/json"); });
+
+    // ========== 1. 用户管理类 API ==========
+
+    // API: 获取当前用户信息
+    svr.Get("/api/user/info", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        qInfo() << "收到获取用户信息请求";
+
+        QString username;
+        if (!extractAndVerifyToken(req, username, res)) {
+            return;
+        }
+
+        QJsonObject response;
+        QVariantMap userInfo = db.getUserInfo(username);
+
+        if (userInfo.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "用户不存在";
+            res.status = 404;
+        } else {
+            response["success"] = true;
+            response["username"] = userInfo["username"].toString();
+            response["created_at"] = userInfo["created_at"].toString();
+            response["last_login"] = userInfo["last_login"].toString();
+            response["hasFace"] = !db.getUserDescriptor(username).isEmpty();
+            response["hasPassword"] = !db.getUserPassword(username).isEmpty();
+        }
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
+    // API: 获取所有用户列表
+    svr.Get("/api/user/list", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        qInfo() << "收到获取用户列表请求";
+
+        QString username;
+        if (!extractAndVerifyToken(req, username, res)) {
+            return;
+        }
+
+        QJsonObject response;
+        QVector<QVariantMap> users = db.getAllUsers();
+        QJsonArray userArray;
+
+        for (const auto &user : users) {
+            QJsonObject userObj;
+            userObj["username"] = user["username"].toString();
+            userObj["created_at"] = user["created_at"].toString();
+            userObj["last_login"] = user["last_login"].toString();
+            userObj["hasFace"] = !db.getUserDescriptor(user["username"].toString()).isEmpty();
+            userObj["hasPassword"] = !db.getUserPassword(user["username"].toString()).isEmpty();
+            userArray.append(userObj);
+        }
+
+        response["success"] = true;
+        response["count"] = userArray.size();
+        response["users"] = userArray;
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
+    // API: 删除用户
+    // # 删除用户 "admin"  
+    // curl -X DELETE http://localhost:3000/api/user/admin \
+    // -H "Authorization: Bearer <your_token>"
+    // (.*) 是一个正则表达式，.* 表示匹配任意字符任意次数，() 表示捕获括号内匹配的内容
+    svr.Delete("/api/user/(.*)", [&](const httplib::Request &req, httplib::Response &res)
+               {
+        qInfo() << "收到删除用户请求";
+
+        QString currentUser;
+        if (!extractAndVerifyToken(req, currentUser, res)) {
+            return;
+        }
+
+        // req.matches 是 httplib 库提供的匹配结果数组，req.matches[0] 完整匹配的字符串，req.matches[1]第一个捕获组 (.*) 的内容
+        QString targetUsername = QString::fromStdString(req.matches[1]);
+        QJsonObject response;
+
+        // 不允许删除自己
+        if (targetUsername == currentUser) {
+            response["success"] = false;
+            response["message"] = "不能删除当前登录的用户";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        if (!db.userExists(targetUsername)) {
+            response["success"] = false;
+            response["message"] = "用户不存在";
+            res.status = 404;
+        } else if (db.deleteUser(targetUsername)) {
+            response["success"] = true;
+            response["message"] = "用户删除成功";
+            qInfo() << "✅ 用户" << targetUsername << "已被" << currentUser << "删除";
+        } else {
+            response["success"] = false;
+            response["message"] = "删除失败,请稍后重试";
+            res.status = 500;
+        }
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
+    // API: 获取用户总数统计
+    svr.Get("/api/user/count", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        qInfo() << "收到获取用户数量请求";
+
+        QString username;
+        if (!extractAndVerifyToken(req, username, res)) {
+            return;
+        }
+
+        QJsonObject response;
+        response["success"] = true;
+        response["count"] = db.getUserCount();
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
 
     // 在独立线程中启动 HTTP 服务器
     QThread *serverThread = QThread::create([&]()
