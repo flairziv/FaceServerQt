@@ -2,6 +2,7 @@
 #include <QThread>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonArray>
 #include <QDebug>
 #include <QDateTime>
 #include <QCryptographicHash>
