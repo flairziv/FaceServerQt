@@ -434,6 +434,108 @@ int main(int argc, char *argv[])
                        "application/json"); });
 
 
+    // ========== 2. 用户更新类 API ==========
+
+    // API: 修改密码
+    svr.Put("/api/user/password", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        qInfo() << "收到修改密码请求";
+
+        QString username;
+        if (!extractAndVerifyToken(req, username, res)) {
+            return;
+        }
+
+        auto bodyJson = QJsonDocument::fromJson(QByteArray::fromStdString(req.body)).object();
+        QString oldPassword = bodyJson["oldPassword"].toString();
+        QString newPassword = bodyJson["newPassword"].toString();
+
+        QJsonObject response;
+
+        if (oldPassword.isEmpty() || newPassword.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "旧密码和新密码不能为空";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        // 验证旧密码
+        QString storedPassword = db.getUserPassword(username);
+        if (storedPassword != hashPassword(oldPassword)) {
+            response["success"] = false;
+            response["message"] = "旧密码错误";
+            res.status = 401;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        // 更新密码
+        QString newPasswordHash = hashPassword(newPassword);
+        if (db.updateUserPassword(username, newPasswordHash)) {
+            response["success"] = true;
+            response["message"] = "密码修改成功";
+            qInfo() << "✅ 用户" << username << "修改密码成功";
+        } else {
+            response["success"] = false;
+            response["message"] = "密码修改失败,请稍后重试";
+            res.status = 500;
+        }
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
+    // API: 更新人脸信息
+    svr.Put("/api/user/face", [&](const httplib::Request &req, httplib::Response &res)
+            {
+        qInfo() << "收到更新人脸请求";
+
+        QString username;
+        if (!extractAndVerifyToken(req, username, res)) {
+            return;
+        }
+
+        auto bodyJson = QJsonDocument::fromJson(QByteArray::fromStdString(req.body)).object();
+        QString image = bodyJson["image"].toString();
+
+        QJsonObject response;
+
+        if (image.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "人脸图像不能为空";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        // 提取人脸特征
+        QVector<float> descriptor = recognizer.extractDescriptorFromBase64(image);
+        if (descriptor.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "未检测到人脸,请确保光线充足并正对摄像头";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        // 更新人脸特征
+        if (db.updateUserDescriptor(username, descriptor)) {
+            response["success"] = true;
+            response["message"] = "人脸信息更新成功";
+            qInfo() << "✅ 用户" << username << "更新人脸信息成功";
+        } else {
+            response["success"] = false;
+            response["message"] = "人脸信息更新失败,请稍后重试";
+            res.status = 500;
+        }
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
     // 在独立线程中启动 HTTP 服务器
     QThread *serverThread = QThread::create([&]()
                                             {
