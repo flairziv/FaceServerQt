@@ -537,6 +537,154 @@ int main(int argc, char *argv[])
         res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
                        "application/json"); });
 
+    // ========== 3. 人脸识别工具类 API ==========
+
+    // API: 检测图片中是否有人脸
+    svr.Post("/api/face/detect", [&](const httplib::Request &req, httplib::Response &res)
+             {
+        qInfo() << "收到人脸检测请求";
+
+        auto bodyJson = QJsonDocument::fromJson(QByteArray::fromStdString(req.body)).object();
+        QString image = bodyJson["image"].toString();
+
+        QJsonObject response;
+
+        if (image.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "图像不能为空";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        QVector<float> descriptor = recognizer.extractDescriptorFromBase64(image);
+        bool faceDetected = !descriptor.isEmpty();
+
+        response["success"] = true;
+        response["faceDetected"] = faceDetected;
+        response["message"] = faceDetected ? "检测到人脸" : "未检测到人脸";
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
+    // API: 比较两张人脸图片的相似度
+    svr.Post("/api/face/compare", [&](const httplib::Request &req, httplib::Response &res)
+             {
+        qInfo() << "收到人脸比对请求";
+
+        auto bodyJson = QJsonDocument::fromJson(QByteArray::fromStdString(req.body)).object();
+        QString image1 = bodyJson["image1"].toString();
+        QString image2 = bodyJson["image2"].toString();
+
+        QJsonObject response;
+
+        if (image1.isEmpty() || image2.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "需要提供两张图像";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        QVector<float> descriptor1 = recognizer.extractDescriptorFromBase64(image1);
+        if (descriptor1.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "第一张图像未检测到人脸";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        QVector<float> descriptor2 = recognizer.extractDescriptorFromBase64(image2);
+        if (descriptor2.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "第二张图像未检测到人脸";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        double distance = FaceRecognizer::computeDistance(descriptor1, descriptor2);
+        double similarity = qMax(0.0, (1.0 - distance)) * 100; // 转换为相似度百分比
+        bool isSamePerson = distance < 0.45;
+
+        response["success"] = true;
+        response["distance"] = distance;
+        response["similarity"] = QString::number(similarity, 'f', 2) + "%";
+        response["isSamePerson"] = isSamePerson;
+        response["threshold"] = 0.45;
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
+    // API: 在所有用户中搜索最匹配的人脸
+    svr.Post("/api/face/search", [&](const httplib::Request &req, httplib::Response &res)
+             {
+        qInfo() << "收到人脸搜索请求";
+
+        auto bodyJson = QJsonDocument::fromJson(QByteArray::fromStdString(req.body)).object();
+        QString image = bodyJson["image"].toString();
+
+        QJsonObject response;
+
+        if (image.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "图像不能为空";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        QVector<float> descriptor = recognizer.extractDescriptorFromBase64(image);
+        if (descriptor.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "未检测到人脸";
+            res.status = 400;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
+
+        // 获取所有用户并进行比对
+        QVector<QVariantMap> users = db.getAllUsers();
+        QString bestMatch;
+        double bestDistance = 999.0;
+
+        for (const auto &user : users) {
+            QString username = user["username"].toString();
+            QVector<float> storedDescriptor = db.getUserDescriptor(username);
+
+            if (!storedDescriptor.isEmpty()) {
+                double distance = FaceRecognizer::computeDistance(descriptor, storedDescriptor);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestMatch = username;
+                }
+            }
+        }
+
+        if (bestMatch.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "数据库中没有人脸数据";
+            res.status = 404;
+        } else {
+            response["success"] = true;
+            response["bestMatch"] = bestMatch;
+            response["distance"] = bestDistance;
+            response["isMatch"] = bestDistance < 0.45;
+            response["threshold"] = 0.45;
+
+            qInfo() << "🔍 人脸搜索结果: 最匹配用户" << bestMatch << "(距离:" << bestDistance << ")";
+        }
+
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json"); });
+
     // 在独立线程中启动 HTTP 服务器
     QThread *serverThread = QThread::create([&]()
                                             {
