@@ -57,14 +57,23 @@ else()
 endif()
 
 include_directories(${CMAKE_SOURCE_DIR}/include
+                    ${CMAKE_SOURCE_DIR}/include/utils
                     ${CMAKE_SOURCE_DIR}/third_party
                     ${CMAKE_SOURCE_DIR}/third_party/jwt-cpp/include
                     ${OpenCV_INCLUDE_DIRS}
                     ${OPENSSL_INCLUDE_DIR}
                     ${DLIB_INCLUDE_DIR})
 
-file(GLOB SRCS src/*.cpp src/*.cxx)
-file(GLOB HDRS include/*.h include/*.hpp)
+# 递归查找所有源文件和头文件
+file(GLOB_RECURSE SRCS 
+    ${CMAKE_SOURCE_DIR}/src/*.cpp 
+    ${CMAKE_SOURCE_DIR}/src/*.cxx
+)
+
+file(GLOB_RECURSE HDRS 
+    ${CMAKE_SOURCE_DIR}/include/*.h 
+    ${CMAKE_SOURCE_DIR}/include/*.hpp
+)
 
 add_executable(FaceServerQt ${SRCS} ${HDRS})
 
