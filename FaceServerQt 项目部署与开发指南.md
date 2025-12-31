@@ -278,19 +278,21 @@ FaceServerQt/
 ├── CMakeLists.txt
 ├── src/
 │   ├── utils/                      # 工具函数
-│   │   └── AuthMiddleware.cpp
 │   │   └── PasswordUtils.cpp
-│   ├── main.cpp
-│   ├── FaceRecognizer.cpp
-│   ├── DatabaseManager. cpp
-│   └── JwtHelper.cpp
+│   ├── middleware/                 # 中间件
+│   │   └── AuthMiddleware.cpp
+│   │   └── FaceRecognizer.cpp
+│   │   └── DatabaseManager.cpp
+│   │   └── JwtHelper.cpp
+│   └── main.cpp
 ├── include/
 │   ├── utils/                      # 工具函数
-│   │   └── AuthMiddleware.h
 │   │   └── PasswordUtils.h
-│   ├── FaceRecognizer.h
-│   ├── DatabaseManager.h
-│   └── JwtHelper.h
+│   ├── middleware/                 # 中间件
+│   │   └── AuthMiddleware.h
+│   │   └── FaceRecognizer.h
+│   │   └── DatabaseManager.h
+│   └────── JwtHelper.h
 ├── third_party/
 │   ├── httplib.h
 │   └── jwt-cpp/
@@ -366,6 +368,7 @@ endif()
 
 include_directories(${CMAKE_SOURCE_DIR}/include
                     ${CMAKE_SOURCE_DIR}/include/utils
+                    ${CMAKE_SOURCE_DIR}/include/middleware
                     ${CMAKE_SOURCE_DIR}/third_party
                     ${CMAKE_SOURCE_DIR}/third_party/jwt-cpp/include
                     ${OpenCV_INCLUDE_DIRS}
