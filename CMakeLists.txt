@@ -59,6 +59,7 @@ endif()
 include_directories(${CMAKE_SOURCE_DIR}/include
                     ${CMAKE_SOURCE_DIR}/include/utils
                     ${CMAKE_SOURCE_DIR}/include/middleware
+                    ${CMAKE_SOURCE_DIR}/include/routes
                     ${CMAKE_SOURCE_DIR}/third_party
                     ${CMAKE_SOURCE_DIR}/third_party/jwt-cpp/include
                     ${OpenCV_INCLUDE_DIRS}
