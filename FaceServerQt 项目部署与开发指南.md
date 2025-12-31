@@ -280,26 +280,32 @@ FaceServerQt/
 │   ├── utils/                      # 工具函数
 │   │   └── PasswordUtils.cpp
 │   ├── middleware/                 # 中间件
-│   │   └── AuthMiddleware.cpp
-│   │   └── FaceRecognizer.cpp
-│   │   └── DatabaseManager.cpp
+│   │   ├── AuthMiddleware.cpp
+│   │   ├── FaceRecognizer.cpp
+│   │   ├── DatabaseManager.cpp
 │   │   └── JwtHelper.cpp
 │   ├── routes/                     # API路由层
-│   │   └── SystemRoutes.cpp
+│   │   ├── AuthRoutes.h
+│   │   ├── FaceRoutes.h
+│   │   ├── SystemRoutes.h
+│   │   └── UserRoutes.h
 │   └── main.cpp
 ├── include/
 │   ├── utils/                      # 工具函数
 │   │   └── PasswordUtils.h
 │   ├── middleware/                 # 中间件
-│   │   └── AuthMiddleware.h
-│   │   └── FaceRecognizer.h
-│   │   └── DatabaseManager.h
+│   │   ├── AuthMiddleware.h
+│   │   ├── FaceRecognizer.h
+│   │   ├── DatabaseManager.h
 │   │   └── JwtHelper.h
-│   ├── routes/                     # API路由层
-│   │   └── SystemRoutes.h
+│   └── routes/                     # API路由层
+│       ├── AuthRoutes.h
+│       ├── FaceRoutes.h
+│       ├── SystemRoutes.h
+│       └── UserRoutes.h
 ├── third_party/
 │   ├── httplib.h
-│   └── jwt-cpp/
+│   ├── jwt-cpp/
 │   └── dlib/  (可选如果没有安装在系统，就需要放置在项目中)
 ├── models/
 │   ├── shape_predictor_68_face_landmarks.dat
