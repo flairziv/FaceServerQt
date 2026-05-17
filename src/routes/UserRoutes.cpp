@@ -308,12 +308,12 @@ void UserRoutes::handleVerifyFace(const httplib::Request &req, httplib::Response
 
     // 比对人脸
     double distance = FaceRecognizer::computeDistance(descriptor, storedDescriptor);
-    bool verified = distance < 0.45;
+    bool verified = distance < FaceRecognizer::DEFAULT_THRESHOLD;
 
     response["success"] = verified;
     response["message"] = verified ? "人脸验证通过" : "人脸验证失败";
     response["distance"] = distance;
-    response["threshold"] = 0.45;
+    response["threshold"] = FaceRecognizer::DEFAULT_THRESHOLD;
 
     qInfo() << (verified ? "✓" : "✗") << "用户" << username << "人脸验证"
             << (verified ? "通过" : "失败") << "(距离:" << distance << ")";

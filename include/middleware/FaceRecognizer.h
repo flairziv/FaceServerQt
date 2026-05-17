@@ -49,12 +49,16 @@ public:
     explicit FaceRecognizer(QObject *parent = nullptr);
     ~FaceRecognizer();
 
+    // 人脸距离阈值: distance < DEFAULT_THRESHOLD 视为同一人
+    // dlib 官方推荐 0.6,这里用 0.45 更严格
+    static constexpr double DEFAULT_THRESHOLD = 0.45;
+
     // 加载 dlib 模型
     bool loadModels(const QString &shapePredictorPath, const QString &faceRecModelPath);
-    
+
     // 从 base64 图像提取 128-d 人脸特征向量
     QVector<float> extractDescriptorFromBase64(const QString &base64Image);
-    
+
     // 计算两个特征向量的欧氏距离
     static double computeDistance(const QVector<float> &desc1, const QVector<float> &desc2);
 

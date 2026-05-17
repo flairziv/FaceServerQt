@@ -197,7 +197,7 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
     double distance = FaceRecognizer::computeDistance(descriptor, storedDescriptor);
     qInfo() << "与用户" << username << "的人脸距离:" << distance;
 
-    if (distance >= 0.45) { // 阈值: dlib 推荐 0.6,这里用 0.45 更严格
+    if (distance >= FaceRecognizer::DEFAULT_THRESHOLD) {
         qWarning() << "✗ 用户" << username << "人脸验证失败 (距离:" << distance << ")";
         response["success"] = false;
         response["message"] = QString("人脸识别失败,相似度不足 (距离: %1)").arg(distance, 0, 'f', 3);
@@ -296,13 +296,13 @@ void FaceRoutes::handleCompare(const httplib::Request &req, httplib::Response &r
 
     double distance = FaceRecognizer::computeDistance(descriptor1, descriptor2);
     double similarity = qMax(0.0, (1.0 - distance)) * 100; // 转换为相似度百分比
-    bool isSamePerson = distance < 0.45;
+    bool isSamePerson = distance < FaceRecognizer::DEFAULT_THRESHOLD;
 
     response["success"] = true;
     response["distance"] = distance;
     response["similarity"] = QString::number(similarity, 'f', 2) + "%";
     response["isSamePerson"] = isSamePerson;
-    response["threshold"] = 0.45;
+    response["threshold"] = FaceRecognizer::DEFAULT_THRESHOLD;
 
     res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
                    "application/json");
@@ -362,8 +362,8 @@ void FaceRoutes::handleSearch(const httplib::Request &req, httplib::Response &re
         response["success"] = true;
         response["bestMatch"] = bestMatch;
         response["distance"] = bestDistance;
-        response["isMatch"] = bestDistance < 0.45;
-        response["threshold"] = 0.45;
+        response["isMatch"] = bestDistance < FaceRecognizer::DEFAULT_THRESHOLD;
+        response["threshold"] = FaceRecognizer::DEFAULT_THRESHOLD;
 
         qInfo() << "🔍 人脸搜索结果: 最匹配用户" << bestMatch << "(距离:" << bestDistance << ")";
     }
