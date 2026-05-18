@@ -3,6 +3,7 @@
 #include <QDebug>
 #include "DatabaseManager.h"
 #include "FaceRecognizer.h"
+#include "JwtHelper.h"
 #include "httplib.h"
 #include "UserRoutes.h"
 #include "FaceRoutes.h"
@@ -16,6 +17,13 @@ int main(int argc, char *argv[])
     qInfo() << "========================================";
     qInfo() << "  人脸识别服务器 - C++ Qt + dlib 版本";
     qInfo() << "========================================";
+
+    // 加载 JWT 密钥(从环境变量 JWT_SECRET)
+    if (!JwtHelper::initialize())
+    {
+        qCritical() << "JWT 密钥初始化失败,退出";
+        return -1;
+    }
 
     // 初始化数据库
     DatabaseManager db;
