@@ -456,23 +456,68 @@ ldd FaceServer
 
 ## 10. 运行后端服务
 
-### 10.1 启动服务器
+### 10.1 配置环境变量
+
+服务在启动前从环境变量读取敏感配置,缺失必填项会直接退出:
+
+| 变量 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `JWT_SECRET` | ✅ | 无 | JWT 签名密钥,至少 32 字节,建议用 `openssl rand -base64 48` 生成 |
+| `DB_USER` | ✅ | 无 | MySQL 用户名(对应 §6.3 创建的 `faceuser`) |
+| `DB_PASS` | ✅ | 无 | MySQL 密码 |
+| `DB_HOST` | ❌ | `127.0.0.1` | MySQL 主机地址 |
+| `DB_PORT` | ❌ | `3306` | MySQL 端口 |
+| `DB_NAME` | ❌ | `face_recognition_db` | 数据库名 |
+
+#### 临时(当前 shell)
+
+```bash
+export JWT_SECRET="$(openssl rand -base64 48)"
+export DB_USER=faceuser
+export DB_PASS=FacePass2025
+```
+
+#### 持久化到 `~/.bashrc` / `~/.zshrc`
+
+```bash
+echo 'export JWT_SECRET="<生成的密钥>"' >> ~/.bashrc
+echo 'export DB_USER=faceuser' >> ~/.bashrc
+echo 'export DB_PASS=FacePass2025' >> ~/.bashrc
+source ~/.bashrc
+```
+
+#### 通过 systemd 启动时设置(生产推荐)
+
+在 unit 文件的 `[Service]` 段加:
+
+```ini
+Environment="JWT_SECRET=<生成的密钥>"
+Environment="DB_USER=faceuser"
+Environment="DB_PASS=FacePass2025"
+```
+
+> ⚠️ 重启后如果 `JWT_SECRET` 变了,所有已签发的 token 立即失效 — 这是把硬编码密钥换成环境变量后的预期行为。
+
+### 10.2 启动服务器
 
 ```bash
 # 在 build 目录下
-./FaceServer
+./FaceServerQt
 ```
 
-**预期输出：**
+**预期输出:**
 
 ```
 ========================================
-  人脸识别服务器 - VisionGuard-Face
+  人脸识别服务器 - C++ Qt + dlib 版本
 ========================================
+✅ JWT 密钥已加载(长度 64 字节)
 ✅ 数据库连接成功
 ✅ 人脸识别模型加载成功
 🚀 HTTP 服务器启动在 http://0.0.0.0:3000
 ```
+
+如果看到 `❌ 未设置环境变量 JWT_SECRET` / `DB_USER` / `DB_PASS`,说明对应变量没 export,按 §10.1 设置后重试。
 
 ## 11. API 接口测试
 

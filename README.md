@@ -83,11 +83,25 @@ cmake --build . -j$(nproc)
 
 ### 运行服务
 
+启动前需要设置以下环境变量:
+
+| 变量 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `JWT_SECRET` | ✅ | 无 | JWT 签名密钥,至少 32 字节 |
+| `DB_USER` | ✅ | 无 | MySQL 用户名 |
+| `DB_PASS` | ✅ | 无 | MySQL 密码 |
+| `DB_HOST` | ❌ | `127.0.0.1` | MySQL 主机 |
+| `DB_PORT` | ❌ | `3306` | MySQL 端口 |
+| `DB_NAME` | ❌ | `face_recognition_db` | 数据库名 |
+
 ```bash
+export JWT_SECRET="$(openssl rand -base64 48)"
+export DB_USER=faceuser
+export DB_PASS=FacePass2025
 ./FaceServerQt
 ```
 
-服务将在 `http://localhost:3000` 启动
+服务将在 `http://localhost:3000` 启动。**重启时如果重新生成 `JWT_SECRET`,所有已签发的 token 会失效**。
 
 ## 📡 API 接口
 

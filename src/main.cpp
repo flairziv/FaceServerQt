@@ -1,6 +1,7 @@
 #include <QCoreApplication>
 #include <QThread>
 #include <QDebug>
+#include <QByteArray>
 #include "DatabaseManager.h"
 #include "FaceRecognizer.h"
 #include "JwtHelper.h"
@@ -25,9 +26,44 @@ int main(int argc, char *argv[])
         return -1;
     }
 
+    // 读取数据库连接配置
+    // 必填: DB_USER, DB_PASS
+    // 可选: DB_HOST (默认 127.0.0.1)、DB_PORT (默认 3306)、DB_NAME (默认 face_recognition_db)
+    QByteArray dbHost = qgetenv("DB_HOST");
+    if (dbHost.isEmpty()) dbHost = "127.0.0.1";
+
+    QByteArray dbName = qgetenv("DB_NAME");
+    if (dbName.isEmpty()) dbName = "face_recognition_db";
+
+    int dbPort = 3306;
+    QByteArray dbPortRaw = qgetenv("DB_PORT");
+    if (!dbPortRaw.isEmpty()) {
+        bool ok = false;
+        dbPort = dbPortRaw.toInt(&ok);
+        if (!ok || dbPort <= 0 || dbPort > 65535) {
+            qCritical() << "❌ DB_PORT 不是合法端口号:" << dbPortRaw;
+            return -1;
+        }
+    }
+
+    QByteArray dbUser = qgetenv("DB_USER");
+    if (dbUser.isEmpty()) {
+        qCritical() << "❌ 未设置环境变量 DB_USER";
+        return -1;
+    }
+
+    QByteArray dbPass = qgetenv("DB_PASS");
+    if (dbPass.isEmpty()) {
+        qCritical() << "❌ 未设置环境变量 DB_PASS";
+        return -1;
+    }
+
     // 初始化数据库
     DatabaseManager db;
-    if (!db.initialize("127.0.0.1", 3306, "face_recognition_db", "faceuser", "FacePass2025"))
+    if (!db.initialize(QString::fromUtf8(dbHost), dbPort,
+                       QString::fromUtf8(dbName),
+                       QString::fromUtf8(dbUser),
+                       QString::fromUtf8(dbPass)))
     {
         qCritical() << "数据库初始化失败,退出";
         return -1;
