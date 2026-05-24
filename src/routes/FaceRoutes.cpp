@@ -336,21 +336,16 @@ void FaceRoutes::handleSearch(const httplib::Request &req, httplib::Response &re
         return;
     }
 
-    // 获取所有用户并进行比对
-    QVector<QVariantMap> users = m_db.getAllUsers();
+    // 一次查询拿到所有已录入人脸的用户 + 特征向量,避免 N+1
+    QVector<QPair<QString, QVector<float>>> users = m_db.getAllUserDescriptors();
     QString bestMatch;
     double bestDistance = 999.0;
 
     for (const auto &user : users) {
-        QString username = user["username"].toString();
-        QVector<float> storedDescriptor = m_db.getUserDescriptor(username);
-
-        if (!storedDescriptor.isEmpty()) {
-            double distance = FaceRecognizer::computeDistance(descriptor, storedDescriptor);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                bestMatch = username;
-            }
+        double distance = FaceRecognizer::computeDistance(descriptor, user.second);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            bestMatch = user.first;
         }
     }
 

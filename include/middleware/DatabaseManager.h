@@ -7,6 +7,7 @@
 #include <QSqlError>
 #include <QVector>
 #include <QVariantMap>
+#include <QPair>
 
 class DatabaseManager : public QObject
 {
@@ -31,6 +32,10 @@ public:
     QString getUserPassword(const QString &username);
     QVariantMap getUserInfo(const QString &username);
     QVector<QVariantMap> getAllUsers();
+
+    // 一次查询返回所有已录入人脸的用户及其 128-d 特征向量
+    // 供 /api/face/search 等需要全表扫描的场景使用,避免 N+1
+    QVector<QPair<QString, QVector<float>>> getAllUserDescriptors();
     
     // 更新用户数据
     bool updateLastLogin(const QString &username);

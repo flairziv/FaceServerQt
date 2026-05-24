@@ -91,8 +91,8 @@ void UserRoutes::handleGetUserList(const httplib::Request &req, httplib::Respons
         userObj["username"] = user["username"].toString();
         userObj["created_at"] = user["created_at"].toString();
         userObj["last_login"] = user["last_login"].toString();
-        userObj["hasFace"] = !m_db.getUserDescriptor(user["username"].toString()).isEmpty();
-        userObj["hasPassword"] = !m_db.getUserPassword(user["username"].toString()).isEmpty();
+        userObj["hasFace"] = user["has_face"].toBool();
+        userObj["hasPassword"] = user["has_password"].toBool();
         userArray.append(userObj);
     }
 

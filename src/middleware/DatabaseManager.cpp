@@ -284,6 +284,21 @@ QVector<QVariantMap> DatabaseManager::getAllUsers()
     return users;
 }
 
+QVector<QPair<QString, QVector<float>>> DatabaseManager::getAllUserDescriptors()
+{
+    QVector<QPair<QString, QVector<float>>> results;
+    QSqlQuery query("SELECT username, face_descriptor FROM users "
+                    "WHERE face_descriptor IS NOT NULL", m_db);
+
+    while (query.next()) {
+        QByteArray blob = query.value(1).toByteArray();
+        if (blob.isEmpty()) continue;
+        results.append(qMakePair(query.value(0).toString(), blobToDescriptor(blob)));
+    }
+
+    return results;
+}
+
 bool DatabaseManager::deleteUser(const QString &username)
 {
     QSqlQuery query(m_db);
