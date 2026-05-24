@@ -468,6 +468,7 @@ ldd FaceServer
 | `DB_HOST` | ❌ | `127.0.0.1` | MySQL 主机地址 |
 | `DB_PORT` | ❌ | `3306` | MySQL 端口 |
 | `DB_NAME` | ❌ | `face_recognition_db` | 数据库名 |
+| `ALLOWED_ORIGINS` | ❌ | `*` | CORS 跨域白名单,逗号分隔的 origin;未设置或显式 `*` 时通配并打 warning |
 
 #### 临时(当前 shell)
 
@@ -475,6 +476,8 @@ ldd FaceServer
 export JWT_SECRET="$(openssl rand -base64 48)"
 export DB_USER=faceuser
 export DB_PASS=FacePass2025
+# 生产环境强烈建议配置 CORS 白名单
+# export ALLOWED_ORIGINS="https://app.example.com,https://staging.example.com"
 ```
 
 #### 持久化到 `~/.bashrc` / `~/.zshrc`
@@ -502,6 +505,7 @@ export DB_PASS=FacePass2025
 # export DB_HOST=127.0.0.1
 # export DB_PORT=3306
 # export DB_NAME=face_recognition_db
+# export ALLOWED_ORIGINS="https://app.example.com"
 EOF
 chmod 600 .env   # 收紧权限,避免同机其他用户读到
 ```

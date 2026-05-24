@@ -93,6 +93,7 @@ cmake --build . -j$(nproc)
 | `DB_HOST` | ❌ | `127.0.0.1` | MySQL 主机 |
 | `DB_PORT` | ❌ | `3306` | MySQL 端口 |
 | `DB_NAME` | ❌ | `face_recognition_db` | 数据库名 |
+| `ALLOWED_ORIGINS` | ❌ | `*` | CORS 白名单,逗号分隔的 origin,如 `https://app.example.com,https://x.example.com` |
 
 ```bash
 export JWT_SECRET="$(openssl rand -base64 48)"

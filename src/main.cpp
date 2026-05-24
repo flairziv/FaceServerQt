@@ -2,6 +2,8 @@
 #include <QThread>
 #include <QDebug>
 #include <QByteArray>
+#include <QSet>
+#include <QStringList>
 #include "DatabaseManager.h"
 #include "FaceRecognizer.h"
 #include "JwtHelper.h"
@@ -82,10 +84,43 @@ int main(int argc, char *argv[])
     // 创建 HTTP 服务器
     httplib::Server svr;
 
+    // 解析 CORS 白名单(从 ALLOWED_ORIGINS,逗号分隔)
+    // 未设置或显式设为 "*" → 通配,适合本地开发;生产应配置具体源
+    QSet<QString> allowedOrigins;
+    bool corsWildcard = false;
+    {
+        QByteArray raw = qgetenv("ALLOWED_ORIGINS");
+        if (raw.isEmpty()) {
+            corsWildcard = true;
+        } else {
+            for (const QByteArray &piece : raw.split(',')) {
+                QString trimmed = QString::fromUtf8(piece).trimmed();
+                if (trimmed.isEmpty()) continue;
+                if (trimmed == "*") { corsWildcard = true; allowedOrigins.clear(); break; }
+                allowedOrigins.insert(trimmed);
+            }
+            if (allowedOrigins.isEmpty() && !corsWildcard) corsWildcard = true;
+        }
+    }
+    if (corsWildcard) {
+        qWarning() << "⚠️  CORS 使用通配 *(未设置 ALLOWED_ORIGINS),生产环境请配置具体源";
+    } else {
+        qInfo() << "✅ CORS 白名单:" << QStringList(allowedOrigins.values()).join(", ");
+    }
+
     // 设置 CORS(允许前端跨域访问)
-    svr.set_pre_routing_handler([](const httplib::Request &req, httplib::Response &res)
+    svr.set_pre_routing_handler([corsWildcard, allowedOrigins](const httplib::Request &req, httplib::Response &res)
                                 {
-        res.set_header("Access-Control-Allow-Origin", "*");
+        QString origin = QString::fromStdString(req.get_header_value("Origin"));
+
+        if (corsWildcard) {
+            res.set_header("Access-Control-Allow-Origin", "*");
+        } else if (!origin.isEmpty() && allowedOrigins.contains(origin)) {
+            res.set_header("Access-Control-Allow-Origin", origin.toStdString());
+            res.set_header("Vary", "Origin");
+        }
+        // 否则不发 Access-Control-Allow-Origin,浏览器会拦截
+
         res.set_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         res.set_header("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
