@@ -103,6 +103,8 @@ export DB_PASS=FacePass2025
 
 服务将在 `http://localhost:3000` 启动。**重启时如果重新生成 `JWT_SECRET`,所有已签发的 token 会失效**。
 
+> 不想污染 shell?在 `build/` 下放一个 `.env` 用 `run.sh` 包装启动,详见[部署指南](FaceServerQt%20项目部署与开发指南.md) §10.1。
+
 ## 📡 API 接口
 
 ### 健康检查

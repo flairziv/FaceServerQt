@@ -486,6 +486,47 @@ echo 'export DB_PASS=FacePass2025' >> ~/.bashrc
 source ~/.bashrc
 ```
 
+#### 通过 `.env` + 包装脚本(只对可执行程序目录生效)
+
+如果不想把密钥/密码写进 `~/.bashrc` 污染整个 shell,推荐这种方式 — 配置和二进制一起搬迁,且不会泄露给同机器上其他项目。
+
+**1) 在 `build/` 目录下创建 `.env`(只对本可执行程序生效):**
+
+```bash
+cd build
+cat > .env <<'EOF'
+export JWT_SECRET="替换为 openssl rand -base64 48 生成的密钥"
+export DB_USER=faceuser
+export DB_PASS=FacePass2025
+# 可选,使用默认值时可省略
+# export DB_HOST=127.0.0.1
+# export DB_PORT=3306
+# export DB_NAME=face_recognition_db
+EOF
+chmod 600 .env   # 收紧权限,避免同机其他用户读到
+```
+
+**2) 创建 `run.sh` 包装脚本:**
+
+```bash
+cat > run.sh <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+DIR="$(cd "$(dirname "$0")" && pwd)"
+[[ -f "$DIR/.env" ]] && source "$DIR/.env"
+exec "$DIR/FaceServerQt"
+EOF
+chmod +x run.sh
+```
+
+**3) 启动:**
+
+```bash
+./run.sh
+```
+
+> ⚠️ **`.env` 不要提交到 git**。本项目的 `.gitignore` 已经排除了整个 `build/` 目录,所以放在 `build/.env` 是安全的;如果你把 `.env` 放在别的位置,需要自行在 `.gitignore` 加一行 `*.env`。`run.sh` 不含敏感信息,可以提交。
+
 #### 通过 systemd 启动时设置(生产推荐)
 
 在 unit 文件的 `[Service]` 段加:
@@ -501,8 +542,11 @@ Environment="DB_PASS=FacePass2025"
 ### 10.2 启动服务器
 
 ```bash
-# 在 build 目录下
+# 在 build 目录下,使用当前 shell 已 export 的环境变量
 ./FaceServerQt
+
+# 或使用 .env + run.sh(见 §10.1 第三种方式)
+./run.sh
 ```
 
 **预期输出:**
