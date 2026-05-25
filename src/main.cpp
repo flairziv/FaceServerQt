@@ -7,6 +7,7 @@
 #include "DatabaseManager.h"
 #include "FaceRecognizer.h"
 #include "JwtHelper.h"
+#include "LoginRateLimiter.h"
 #include "httplib.h"
 #include "UserRoutes.h"
 #include "FaceRoutes.h"
@@ -136,7 +137,8 @@ int main(int argc, char *argv[])
     SystemRoutes systemRoutes(db);
     systemRoutes.registerRoutes(svr);
 
-    FaceRoutes faceRoutes(db, recognizer);
+    LoginRateLimiter loginRateLimiter;  // 默认: 60 秒窗口 / 5 次失败上限
+    FaceRoutes faceRoutes(db, recognizer, loginRateLimiter);
     faceRoutes.registerRoutes(svr);
 
     UserRoutes userRoutes(db, recognizer);

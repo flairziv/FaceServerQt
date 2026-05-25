@@ -5,8 +5,8 @@
 #include <QJsonObject>
 #include <QDebug>
 
-FaceRoutes::FaceRoutes(DatabaseManager &db, FaceRecognizer &recognizer)
-    : m_db(db), m_recognizer(recognizer)
+FaceRoutes::FaceRoutes(DatabaseManager &db, FaceRecognizer &recognizer, LoginRateLimiter &rateLimiter)
+    : m_db(db), m_recognizer(recognizer), m_rateLimiter(rateLimiter)
 {
 }
 
@@ -136,8 +136,22 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
         return;
     }
 
+    // 登录限流检查(滑动窗口,按用户名)
+    int waitSecs = m_rateLimiter.secondsUntilAllowed(username);
+    if (waitSecs > 0) {
+        qWarning() << "⏱ 用户" << username << "触发登录限流,需等待" << waitSecs << "秒";
+        response["success"] = false;
+        response["message"] = QString("登录失败次数过多,请 %1 秒后再试").arg(waitSecs);
+        res.status = 429;
+        res.set_header("Retry-After", std::to_string(waitSecs));
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json");
+        return;
+    }
+
     // 第一步: 验证用户是否存在
     if (!m_db.userExists(username)) {
+        m_rateLimiter.recordFailure(username);
         response["success"] = false;
         response["message"] = "用户不存在";
         res.status = 401;
@@ -151,6 +165,7 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
     QString storedPassword = m_db.getUserPassword(username);
 
     if (storedPassword.isEmpty()) {
+        m_rateLimiter.recordFailure(username);
         response["success"] = false;
         response["message"] = "该账号未设置密码,请联系管理员";
         res.status = 401;
@@ -160,6 +175,7 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
     }
 
     if (storedPassword != hashedPassword) {
+        m_rateLimiter.recordFailure(username);
         qWarning() << "✗ 用户" << username << "密码验证失败";
         response["success"] = false;
         response["message"] = "密码错误";
@@ -175,6 +191,7 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
     QVector<float> descriptor = m_recognizer.extractDescriptorFromBase64(image);
 
     if (descriptor.isEmpty()) {
+        m_rateLimiter.recordFailure(username);
         response["success"] = false;
         response["message"] = "未检测到人脸,请确保光线充足并正对摄像头";
         res.status = 400;
@@ -186,6 +203,7 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
     QVector<float> storedDescriptor = m_db.getUserDescriptor(username);
 
     if (storedDescriptor.isEmpty()) {
+        m_rateLimiter.recordFailure(username);
         response["success"] = false;
         response["message"] = "该账号未录入人脸信息,请联系管理员";
         res.status = 401;
@@ -198,6 +216,7 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
     qInfo() << "与用户" << username << "的人脸距离:" << distance;
 
     if (distance >= FaceRecognizer::DEFAULT_THRESHOLD) {
+        m_rateLimiter.recordFailure(username);
         qWarning() << "✗ 用户" << username << "人脸验证失败 (距离:" << distance << ")";
         response["success"] = false;
         response["message"] = QString("人脸识别失败,相似度不足 (距离: %1)").arg(distance, 0, 'f', 3);
@@ -209,7 +228,8 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
 
     qInfo() << "✓ 用户" << username << "人脸验证通过 (距离:" << distance << ")";
 
-    // 认证通过
+    // 认证通过,清空失败计数
+    m_rateLimiter.recordSuccess(username);
     QString token = JwtHelper::generateToken(username);
     m_db.updateLastLogin(username);
 
