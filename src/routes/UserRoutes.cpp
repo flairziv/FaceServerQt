@@ -187,7 +187,7 @@ void UserRoutes::handleUpdatePassword(const httplib::Request &req, httplib::Resp
 
     // 验证旧密码
     QString storedPassword = m_db.getUserPassword(username);
-    if (storedPassword != PasswordUtils::hashPassword(oldPassword)) {
+    if (!PasswordUtils::verifyPassword(oldPassword, storedPassword)) {
         response["success"] = false;
         response["message"] = "旧密码错误";
         res.status = 401;
@@ -196,9 +196,13 @@ void UserRoutes::handleUpdatePassword(const httplib::Request &req, httplib::Resp
         return;
     }
 
-    // 更新密码
+    // 更新密码(argon2id)
     QString newPasswordHash = PasswordUtils::hashPassword(newPassword);
-    if (m_db.updateUserPassword(username, newPasswordHash)) {
+    if (newPasswordHash.isEmpty()) {
+        response["success"] = false;
+        response["message"] = "密码修改失败,请稍后重试";
+        res.status = 500;
+    } else if (m_db.updateUserPassword(username, newPasswordHash)) {
         response["success"] = true;
         response["message"] = "密码修改成功";
         qInfo() << "✅ 用户" << username << "修改密码成功";

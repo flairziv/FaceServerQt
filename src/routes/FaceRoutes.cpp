@@ -87,10 +87,18 @@ void FaceRoutes::handleRegister(const httplib::Request &req, httplib::Response &
         }
     }
 
-    // 密码哈希处理
+    // 密码哈希处理(argon2id)
     QString hashedPassword;
     if (!password.isEmpty()) {
         hashedPassword = PasswordUtils::hashPassword(password);
+        if (hashedPassword.isEmpty()) {
+            response["success"] = false;
+            response["message"] = "注册失败,请稍后重试";
+            res.status = 500;
+            res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                           "application/json");
+            return;
+        }
     }
 
     // 保存到数据库
@@ -161,7 +169,6 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
     }
 
     // 第二步: 验证密码
-    QString hashedPassword = PasswordUtils::hashPassword(password);
     QString storedPassword = m_db.getUserPassword(username);
 
     if (storedPassword.isEmpty()) {
@@ -174,7 +181,7 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
         return;
     }
 
-    if (storedPassword != hashedPassword) {
+    if (!PasswordUtils::verifyPassword(password, storedPassword)) {
         m_rateLimiter.recordFailure(username);
         qWarning() << "✗ 用户" << username << "密码验证失败";
         response["success"] = false;
@@ -230,6 +237,16 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
 
     // 认证通过,清空失败计数
     m_rateLimiter.recordSuccess(username);
+
+    // 旧版无盐 SHA-256 哈希在登录成功后透明升级为 argon2id
+    if (PasswordUtils::needsRehash(storedPassword)) {
+        QString upgraded = PasswordUtils::hashPassword(password);
+        if (!upgraded.isEmpty()) {
+            m_db.updateUserPassword(username, upgraded);
+            qInfo() << "🔐 用户" << username << "密码哈希已升级为 argon2id";
+        }
+    }
+
     QString token = JwtHelper::generateToken(username);
     m_db.updateLastLogin(username);
 

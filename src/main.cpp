@@ -7,6 +7,7 @@
 #include "DatabaseManager.h"
 #include "FaceRecognizer.h"
 #include "JwtHelper.h"
+#include "PasswordUtils.h"
 #include "LoginRateLimiter.h"
 #include "httplib.h"
 #include "UserRoutes.h"
@@ -26,6 +27,13 @@ int main(int argc, char *argv[])
     if (!JwtHelper::initialize())
     {
         qCritical() << "JWT 密钥初始化失败,退出";
+        return -1;
+    }
+
+    // 初始化 libsodium(argon2id 密码哈希)
+    if (!PasswordUtils::initialize())
+    {
+        qCritical() << "密码哈希库初始化失败,退出";
         return -1;
     }
 
