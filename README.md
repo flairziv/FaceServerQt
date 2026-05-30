@@ -32,7 +32,7 @@
 
 ```bash
 sudo apt install -y build-essential cmake qtbase5-dev \
-    libqt5sql5-mysql libopencv-dev libmysqlclient-dev
+    libqt5sql5-mysql libopencv-dev libmysqlclient-dev libsodium-dev
 ```
 
 ### 编译 dlib

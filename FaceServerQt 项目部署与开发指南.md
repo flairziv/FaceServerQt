@@ -74,6 +74,12 @@ sudo apt install -y \
     libopencv-highgui-dev
 ```
 
+### 2.6 安装 libsodium(argon2id 密码哈希)
+
+```bash
+sudo apt install -y libsodium-dev
+```
+
 ## 3. 安装 dlib
 
 ### 3.1 从源码编译安装（推荐）
@@ -252,7 +258,7 @@ CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) UNIQUE NOT NULL,
     face_descriptor BLOB DEFAULT NULL COMMENT '128维人脸特征向量',
-    password_hash VARCHAR(64) DEFAULT NULL COMMENT '密码SHA256哈希',
+    password_hash VARCHAR(255) DEFAULT NULL COMMENT 'argon2id 加盐哈希(兼容旧版SHA-256)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP NULL,
     INDEX idx_username (username)
