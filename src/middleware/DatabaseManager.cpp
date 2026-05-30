@@ -43,7 +43,7 @@ bool DatabaseManager::createTables()
             id INT AUTO_INCREMENT PRIMARY KEY,
             username VARCHAR(128) UNIQUE NOT NULL,
             face_descriptor LONGBLOB DEFAULT NULL COMMENT '128维人脸特征向量',
-            password_hash VARCHAR(64) DEFAULT NULL COMMENT '密码SHA256哈希',
+            password_hash VARCHAR(255) DEFAULT NULL COMMENT 'argon2id 加盐哈希(兼容旧版SHA-256)',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_login TIMESTAMP NULL DEFAULT NULL,
             INDEX idx_username (username)
@@ -53,6 +53,14 @@ bool DatabaseManager::createTables()
     if (!query.exec(createTableSQL)) {
         qCritical() << "❌ 创建表失败:" << query.lastError().text();
         return false;
+    }
+
+    // 迁移: argon2id 哈希串(~100字符)比旧版 SHA-256(64字符)更长,需扩展列宽。
+    // MySQL MODIFY COLUMN 幂等,可安全重复执行;失败仅告警,不中断启动。
+    QSqlQuery migrate(m_db);
+    if (!migrate.exec("ALTER TABLE users MODIFY COLUMN password_hash "
+                      "VARCHAR(255) DEFAULT NULL COMMENT 'argon2id 加盐哈希(兼容旧版SHA-256)'")) {
+        qWarning() << "⚠ password_hash 列宽迁移失败(可能已是新版):" << migrate.lastError().text();
     }
 
     qInfo() << "✅ 数据表初始化成功";
