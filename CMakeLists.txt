@@ -14,6 +14,27 @@ find_package(Qt5 REQUIRED COMPONENTS Core Sql)
 find_package(OpenCV REQUIRED)
 find_package(OpenSSL REQUIRED)
 
+# libsodium(argon2id 密码哈希)— 优先 pkg-config,回退手动查找
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(SODIUM IMPORTED_TARGET libsodium)
+endif()
+if(TARGET PkgConfig::SODIUM)
+    message(STATUS "找到 libsodium (pkg-config)")
+    set(SODIUM_LINK PkgConfig::SODIUM)
+else()
+    find_path(SODIUM_INCLUDE_DIR sodium.h
+        PATHS /usr/local/include /usr/include)
+    find_library(SODIUM_LIBRARY NAMES sodium
+        PATHS /usr/local/lib /usr/lib)
+    if(NOT SODIUM_INCLUDE_DIR OR NOT SODIUM_LIBRARY)
+        message(FATAL_ERROR "未找到 libsodium,请先安装: sudo apt install libsodium-dev")
+    endif()
+    message(STATUS "手动找到 libsodium: ${SODIUM_LIBRARY}")
+    set(SODIUM_LINK ${SODIUM_LIBRARY})
+    include_directories(${SODIUM_INCLUDE_DIR})
+endif()
+
 # 优先查找系统 dlib
 set(DLIB_DIR "${CMAKE_SOURCE_DIR}/third_party/dlib")
 set(DLIB_FOUND FALSE)
@@ -83,13 +104,14 @@ target_include_directories(FaceServerQt PRIVATE
     ${OpenCV_INCLUDE_DIRS}
     ${DLIB_INCLUDE_DIR})
 
-target_link_libraries(FaceServerQt PRIVATE 
-    Qt5::Core 
-    Qt5::Sql 
+target_link_libraries(FaceServerQt PRIVATE
+    Qt5::Core
+    Qt5::Sql
     ${OpenCV_LIBS}
     ${DLIB_LIBRARIES}
-    OpenSSL::SSL 
-    OpenSSL::Crypto 
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    ${SODIUM_LINK}
     pthread)
 
 file(GLOB MODEL_FILES "${CMAKE_SOURCE_DIR}/models/*.dat")
