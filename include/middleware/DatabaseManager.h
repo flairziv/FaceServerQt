@@ -8,6 +8,7 @@
 #include <QVector>
 #include <QVariantMap>
 #include <QPair>
+#include <QMutex>
 
 class DatabaseManager : public QObject
 {
@@ -53,7 +54,20 @@ private:
     QByteArray descriptorToBlob(const QVector<float> &descriptor);
     QVector<float> blobToDescriptor(const QByteArray &blob);
 
-    QSqlDatabase m_db;
+    // 返回当前线程专属的数据库连接(线程本地)。
+    // Qt 规定:一个连接只能在创建它的线程里使用。httplib 用线程池并发分发请求,
+    // 因此每个工作线程按自身 thread-id 惰性创建并复用一条独立连接。
+    QSqlDatabase threadConnection();
+
+    // 连接参数(initialize 时保存,threadConnection 据此建连)
+    QString m_host;
+    int m_port = 3306;
+    QString m_dbName;
+    QString m_user;
+    QString m_password;
+
+    // 仅保护「首次为某线程创建连接」这一分支;缓存命中路径无需加锁。
+    QMutex m_connectMutex;
 };
 
 #endif // DATABASEMANAGER_H

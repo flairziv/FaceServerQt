@@ -4,6 +4,7 @@
 #include <QByteArray>
 #include <QSet>
 #include <QStringList>
+#include <algorithm>
 #include "DatabaseManager.h"
 #include "FaceRecognizer.h"
 #include "JwtHelper.h"
@@ -92,6 +93,15 @@ int main(int argc, char *argv[])
 
     // 创建 HTTP 服务器
     httplib::Server svr;
+
+    // 限制工作线程数,防止高并发下线程/数据库连接爆炸。
+    // 每个 socket 在其 keep-alive 生命周期内占用一个工作线程,故线程本地数据库连接数 ≈ 线程池大小,
+    // 上限 32(+主线程)远低于 MySQL 默认 max_connections=151。
+    const int workers = std::clamp(QThread::idealThreadCount() * 2, 4, 32);
+    svr.new_task_queue = [workers] { return new httplib::ThreadPool(workers); };
+    svr.set_read_timeout(30);   // 秒,防慢客户端长时间占用工作线程
+    svr.set_write_timeout(30);
+    qInfo() << "✅ 工作线程池:" << workers << "线程(每线程独立数据库连接)";
 
     // 解析 CORS 白名单(从 ALLOWED_ORIGINS,逗号分隔)
     // 未设置或显式设为 "*" → 通配,适合本地开发;生产应配置具体源

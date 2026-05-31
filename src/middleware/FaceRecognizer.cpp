@@ -1,6 +1,7 @@
 #include "FaceRecognizer.h"
 #include <QDebug>
 #include <QByteArray>
+#include <QMutexLocker>
 #include <dlib/image_processing.h>
 #include <cmath>
 
@@ -16,6 +17,8 @@ FaceRecognizer::~FaceRecognizer()
 
 bool FaceRecognizer::loadModels(const QString &shapePredictorPath, const QString &faceRecModelPath)
 {
+    QMutexLocker locker(&m_mutex);  // 启动期无竞争,加锁仅为表意与防御
+
     try {
         qInfo() << "正在加载模型...";
         
@@ -77,6 +80,9 @@ QVector<float> FaceRecognizer::extractDescriptorFromBase64(const QString &base64
         cv::Mat rgbImage;
         cv::cvtColor(cvImage, rgbImage, cv::COLOR_BGR2RGB);
         dlib::cv_image<dlib::rgb_pixel> dlibImage(rgbImage);
+
+        // 🔒 dlib 模型非线程安全:从此处到推理结束串行化(base64 解码/颜色转换已在锁外并行完成)
+        QMutexLocker locker(&m_mutex);
 
         // 检测人脸
         std::vector<dlib::rectangle> faces = m_faceDetector(dlibImage);

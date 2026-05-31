@@ -2,6 +2,8 @@
 #include <QDebug>
 #include <QDataStream>
 #include <QDateTime>
+#include <QThread>
+#include <QMutexLocker>
 
 DatabaseManager::DatabaseManager(QObject *parent) : QObject(parent)
 {
@@ -9,24 +11,50 @@ DatabaseManager::DatabaseManager(QObject *parent) : QObject(parent)
 
 DatabaseManager::~DatabaseManager()
 {
-    if (m_db.isOpen()) {
-        m_db.close();
+    // 连接是各工作线程惰性创建的线程本地连接;不在此(可能是别的线程)调用
+    // removeDatabase —— 跨线程移除不安全。进程退出时由 OS 回收。
+}
+
+QSqlDatabase DatabaseManager::threadConnection()
+{
+    // 每个线程一条独立连接,连接名按 thread-id 唯一,符合 Qt「连接只在创建它的线程使用」的规则。
+    const QString name = QStringLiteral("face_db_%1")
+        .arg(reinterpret_cast<quintptr>(QThread::currentThreadId()));
+
+    // 缓存命中(锁外):该名字只会被其所属线程访问,无 TOCTOU;给此路径加锁反会串行化所有查询。
+    // database() 默认 open=true,连接若被丢弃会自动重连。
+    if (QSqlDatabase::contains(name)) {
+        return QSqlDatabase::database(name);
     }
+
+    // 首次创建:仅此分支加锁(每线程一次),纯防御性。
+    QMutexLocker locker(&m_connectMutex);
+    QSqlDatabase db = QSqlDatabase::addDatabase("QMYSQL", name);
+    db.setHostName(m_host);
+    db.setPort(m_port);
+    db.setDatabaseName(m_dbName);
+    db.setUserName(m_user);
+    db.setPassword(m_password);
+    if (!db.open()) {
+        qCritical() << "❌ 线程数据库连接失败:" << db.lastError().text();
+    }
+    return db;
 }
 
 bool DatabaseManager::initialize(const QString &host, int port, const QString &dbName,
                                 const QString &user, const QString &password)
 {
-    // 向 QSqlDatabase 类添加一个新的数据库连接
-    m_db = QSqlDatabase::addDatabase("QMYSQL");  // "QMYSQL" 是指 MySQL 数据库的驱动程序
-    m_db.setHostName(host);
-    m_db.setPort(port);
-    m_db.setDatabaseName(dbName);
-    m_db.setUserName(user);
-    m_db.setPassword(password);
+    // 保存连接参数,后续每个工作线程据此惰性建立自己的连接
+    m_host = host;
+    m_port = port;
+    m_dbName = dbName;
+    m_user = user;
+    m_password = password;
 
-    if (!m_db.open()) {
-        qCritical() << "❌ 数据库连接失败:" << m_db.lastError().text();
+    // 主线程连接(并触发驱动加载),随后建表
+    QSqlDatabase db = threadConnection();
+    if (!db.isOpen()) {
+        qCritical() << "❌ 数据库连接失败";
         return false;
     }
 
@@ -36,8 +64,9 @@ bool DatabaseManager::initialize(const QString &host, int port, const QString &d
 
 bool DatabaseManager::createTables()
 {
-    QSqlQuery query(m_db);
-    
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
+
     QString createTableSQL = R"(
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -57,7 +86,7 @@ bool DatabaseManager::createTables()
 
     // 迁移: argon2id 哈希串(~100字符)比旧版 SHA-256(64字符)更长,需扩展列宽。
     // MySQL MODIFY COLUMN 幂等,可安全重复执行;失败仅告警,不中断启动。
-    QSqlQuery migrate(m_db);
+    QSqlQuery migrate(db);
     if (!migrate.exec("ALTER TABLE users MODIFY COLUMN password_hash "
                       "VARCHAR(255) DEFAULT NULL COMMENT 'argon2id 加盐哈希(兼容旧版SHA-256)'")) {
         qWarning() << "⚠ password_hash 列宽迁移失败(可能已是新版):" << migrate.lastError().text();
@@ -87,7 +116,8 @@ QVector<float> DatabaseManager::blobToDescriptor(const QByteArray &blob)
 
 bool DatabaseManager::userExists(const QString &username)
 {
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     query.prepare("SELECT COUNT(*) FROM users WHERE username = :username");
     query.bindValue(":username", username);
 
@@ -117,7 +147,8 @@ bool DatabaseManager::insertUser(const QString &username, const QVector<float> &
         return false;
     }
 
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     
     // 根据提供的数据动态构建 SQL
     QString sql;
@@ -158,7 +189,8 @@ bool DatabaseManager::insertUser(const QString &username, const QVector<float> &
 
 QVector<float> DatabaseManager::getUserDescriptor(const QString &username)
 {
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     query.prepare("SELECT face_descriptor FROM users WHERE username = :username");
     query.bindValue(":username", username);
 
@@ -180,7 +212,8 @@ QVector<float> DatabaseManager::getUserDescriptor(const QString &username)
 
 QString DatabaseManager::getUserPassword(const QString &username)
 {
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     query.prepare("SELECT password_hash FROM users WHERE username = :username");
     query.bindValue(":username", username);
 
@@ -198,7 +231,8 @@ QString DatabaseManager::getUserPassword(const QString &username)
 
 bool DatabaseManager::updateLastLogin(const QString &username)
 {
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     query.prepare("UPDATE users SET last_login = :time WHERE username = :username");
     query.bindValue(":time", QDateTime::currentDateTime());
     query.bindValue(":username", username);
@@ -213,7 +247,8 @@ bool DatabaseManager::updateLastLogin(const QString &username)
 
 bool DatabaseManager::updateUserPassword(const QString &username, const QString &newPasswordHash)
 {
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     query.prepare("UPDATE users SET password_hash = :password WHERE username = :username");
     query.bindValue(":password", newPasswordHash);
     query.bindValue(":username", username);
@@ -229,7 +264,8 @@ bool DatabaseManager::updateUserPassword(const QString &username, const QString 
 
 bool DatabaseManager::updateUserDescriptor(const QString &username, const QVector<float> &newDescriptor)
 {
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     query.prepare("UPDATE users SET face_descriptor = :descriptor WHERE username = :username");
     query.bindValue(":descriptor", descriptorToBlob(newDescriptor));
     query.bindValue(":username", username);
@@ -245,7 +281,8 @@ bool DatabaseManager::updateUserDescriptor(const QString &username, const QVecto
 
 QVariantMap DatabaseManager::getUserInfo(const QString &username)
 {
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     query.prepare("SELECT id, username, created_at, last_login, "
                  "(face_descriptor IS NOT NULL) as has_face, "
                  "(password_hash IS NOT NULL) as has_password "
@@ -274,10 +311,11 @@ QVariantMap DatabaseManager::getUserInfo(const QString &username)
 QVector<QVariantMap> DatabaseManager::getAllUsers()
 {
     QVector<QVariantMap> users;
+    QSqlDatabase db = threadConnection();
     QSqlQuery query("SELECT username, created_at, last_login, "
                    "(face_descriptor IS NOT NULL) as has_face, "
                    "(password_hash IS NOT NULL) as has_password "
-                   "FROM users ORDER BY created_at DESC", m_db);
+                   "FROM users ORDER BY created_at DESC", db);
 
     while (query.next()) {
         QVariantMap user;
@@ -295,8 +333,9 @@ QVector<QVariantMap> DatabaseManager::getAllUsers()
 QVector<QPair<QString, QVector<float>>> DatabaseManager::getAllUserDescriptors()
 {
     QVector<QPair<QString, QVector<float>>> results;
+    QSqlDatabase db = threadConnection();
     QSqlQuery query("SELECT username, face_descriptor FROM users "
-                    "WHERE face_descriptor IS NOT NULL", m_db);
+                    "WHERE face_descriptor IS NOT NULL", db);
 
     while (query.next()) {
         QByteArray blob = query.value(1).toByteArray();
@@ -309,7 +348,8 @@ QVector<QPair<QString, QVector<float>>> DatabaseManager::getAllUserDescriptors()
 
 bool DatabaseManager::deleteUser(const QString &username)
 {
-    QSqlQuery query(m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query(db);
     query.prepare("DELETE FROM users WHERE username = :username");
     query.bindValue(":username", username);
     
@@ -324,7 +364,8 @@ bool DatabaseManager::deleteUser(const QString &username)
 
 int DatabaseManager::getUserCount()
 {
-    QSqlQuery query("SELECT COUNT(*) FROM users", m_db);
+    QSqlDatabase db = threadConnection();
+    QSqlQuery query("SELECT COUNT(*) FROM users", db);
     
     if (query.next()) {
         return query.value(0).toInt();

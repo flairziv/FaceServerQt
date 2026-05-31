@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QVector>
 #include <QString>
+#include <QMutex>
 #include <opencv2/opencv.hpp>
 #include <dlib/opencv.h>
 #include <dlib/image_processing/frontal_face_detector.h>
@@ -67,7 +68,11 @@ private:
     dlib::frontal_face_detector m_faceDetector;
     dlib::shape_predictor m_shapePredictor;
     anet_type m_faceRecNet;
-    
+
+    // dlib 模型(检测器/关键点/识别网络)非线程安全:DNN 前向会改写网络内部缓冲。
+    // httplib 多线程并发调用 → 用互斥锁串行化推理段(解码段不在锁内,可并行)。
+    mutable QMutex m_mutex;
+
     // 辅助：base64 转 cv::Mat
     cv::Mat base64ToMat(const QString &base64String);
 };
