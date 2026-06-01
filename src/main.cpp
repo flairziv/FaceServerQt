@@ -101,7 +101,14 @@ int main(int argc, char *argv[])
     svr.new_task_queue = [workers] { return new httplib::ThreadPool(workers); };
     svr.set_read_timeout(30);   // 秒,防慢客户端长时间占用工作线程
     svr.set_write_timeout(30);
+
+    // 限制单次请求体大小,防止超大 base64 图像耗尽内存(DoS)。
+    // 人脸图像 base64 通常远小于此;/api/face/compare 一次携带两张图,故取 16MB 留足余量。
+    constexpr size_t kMaxBodyBytes = 16ull * 1024 * 1024;
+    svr.set_payload_max_length(kMaxBodyBytes);
+
     qInfo() << "✅ 工作线程池:" << workers << "线程(每线程独立数据库连接)";
+    qInfo() << "✅ 请求体上限:" << (kMaxBodyBytes / (1024 * 1024)) << "MB";
 
     // 解析 CORS 白名单(从 ALLOWED_ORIGINS,逗号分隔)
     // 未设置或显式设为 "*" → 通配,适合本地开发;生产应配置具体源
