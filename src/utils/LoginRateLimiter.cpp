@@ -14,10 +14,10 @@ static void evictExpired(QQueue<qint64> &q, qint64 now, int window)
     }
 }
 
-int LoginRateLimiter::secondsUntilAllowed(const QString &username)
+int LoginRateLimiter::secondsUntilAllowed(const QString &key)
 {
     QMutexLocker locker(&m_mutex);
-    auto it = m_failures.find(username);
+    auto it = m_failures.find(key);
     if (it == m_failures.end()) return 0;
 
     qint64 now = QDateTime::currentSecsSinceEpoch();
@@ -34,17 +34,17 @@ int LoginRateLimiter::secondsUntilAllowed(const QString &username)
     return retryAt > now ? static_cast<int>(retryAt - now) : 0;
 }
 
-void LoginRateLimiter::recordFailure(const QString &username)
+void LoginRateLimiter::recordFailure(const QString &key)
 {
     QMutexLocker locker(&m_mutex);
     qint64 now = QDateTime::currentSecsSinceEpoch();
-    auto &q = m_failures[username];
+    auto &q = m_failures[key];
     evictExpired(q, now, m_windowSeconds);
     q.enqueue(now);
 }
 
-void LoginRateLimiter::recordSuccess(const QString &username)
+void LoginRateLimiter::recordSuccess(const QString &key)
 {
     QMutexLocker locker(&m_mutex);
-    m_failures.remove(username);
+    m_failures.remove(key);
 }

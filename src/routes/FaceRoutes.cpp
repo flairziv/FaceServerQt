@@ -144,8 +144,12 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
         return;
     }
 
-    // 登录限流检查(滑动窗口,按用户名)
-    int waitSecs = m_rateLimiter.secondsUntilAllowed(username);
+    // 登录限流键: 按 IP+用户名 联合维度,避免攻击者仅凭用户名把受害者全局锁死
+    const QString rlKey = QStringLiteral("login|")
+        + QString::fromStdString(req.remote_addr) + "|" + username;
+
+    // 登录限流检查(滑动窗口)
+    int waitSecs = m_rateLimiter.secondsUntilAllowed(rlKey);
     if (waitSecs > 0) {
         qWarning() << "⏱ 用户" << username << "触发登录限流,需等待" << waitSecs << "秒";
         response["success"] = false;
@@ -157,65 +161,56 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
         return;
     }
 
+    // 统一的认证失败响应:无论账号不存在 / 密码错 / 人脸不符 / 未录入,
+    // 一律返回相同状态码与文案,避免账号枚举与"哪一环出错"的状态探测。
+    // 服务端日志仍记录具体原因便于排查,但不下发给客户端。
+    // 已知残留:密码错会在人脸推理前快速返回,存在计时侧信道,后续可用恒定耗时缓解。
+    auto rejectAuth = [&]() {
+        m_rateLimiter.recordFailure(rlKey);
+        QJsonObject r;
+        r["success"] = false;
+        r["message"] = "认证失败:账号、密码或人脸信息不正确";
+        res.status = 401;
+        res.set_content(QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json");
+    };
+
     // 第一步: 验证用户是否存在
     if (!m_db.userExists(username)) {
-        m_rateLimiter.recordFailure(username);
-        response["success"] = false;
-        response["message"] = "用户不存在";
-        res.status = 401;
-        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
-                       "application/json");
+        qWarning() << "✗ 登录失败:用户" << username << "不存在";
+        rejectAuth();
         return;
     }
 
     // 第二步: 验证密码
     QString storedPassword = m_db.getUserPassword(username);
-
     if (storedPassword.isEmpty()) {
-        m_rateLimiter.recordFailure(username);
-        response["success"] = false;
-        response["message"] = "该账号未设置密码,请联系管理员";
-        res.status = 401;
-        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
-                       "application/json");
+        qWarning() << "✗ 登录失败:用户" << username << "未设置密码";
+        rejectAuth();
         return;
     }
 
     if (!PasswordUtils::verifyPassword(password, storedPassword)) {
-        m_rateLimiter.recordFailure(username);
         qWarning() << "✗ 用户" << username << "密码验证失败";
-        response["success"] = false;
-        response["message"] = "密码错误";
-        res.status = 401;
-        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
-                       "application/json");
+        rejectAuth();
         return;
     }
 
     qInfo() << "✓ 用户" << username << "密码验证通过";
 
-    // 第三步: 验证人脸
+    // 第三步: 验证人脸。未检测到人脸也按统一失败处理,
+    // 否则"密码已正确但图像无脸→提示未检测到人脸"会变成密码正确性预言机。
     QVector<float> descriptor = m_recognizer.extractDescriptorFromBase64(image);
-
     if (descriptor.isEmpty()) {
-        m_rateLimiter.recordFailure(username);
-        response["success"] = false;
-        response["message"] = "未检测到人脸,请确保光线充足并正对摄像头";
-        res.status = 400;
-        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
-                       "application/json");
+        qWarning() << "✗ 登录失败:用户" << username << "提交图像未检测到人脸";
+        rejectAuth();
         return;
     }
 
     QVector<float> storedDescriptor = m_db.getUserDescriptor(username);
-
     if (storedDescriptor.isEmpty()) {
-        m_rateLimiter.recordFailure(username);
-        response["success"] = false;
-        response["message"] = "该账号未录入人脸信息,请联系管理员";
-        res.status = 401;
-        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
-                       "application/json");
+        qWarning() << "✗ 登录失败:用户" << username << "未录入人脸";
+        rejectAuth();
         return;
     }
 
@@ -223,20 +218,15 @@ void FaceRoutes::handleLogin(const httplib::Request &req, httplib::Response &res
     qInfo() << "与用户" << username << "的人脸距离:" << distance;
 
     if (distance >= FaceRecognizer::DEFAULT_THRESHOLD) {
-        m_rateLimiter.recordFailure(username);
         qWarning() << "✗ 用户" << username << "人脸验证失败 (距离:" << distance << ")";
-        response["success"] = false;
-        response["message"] = QString("人脸识别失败,相似度不足 (距离: %1)").arg(distance, 0, 'f', 3);
-        res.status = 401;
-        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
-                       "application/json");
+        rejectAuth();
         return;
     }
 
     qInfo() << "✓ 用户" << username << "人脸验证通过 (距离:" << distance << ")";
 
     // 认证通过,清空失败计数
-    m_rateLimiter.recordSuccess(username);
+    m_rateLimiter.recordSuccess(rlKey);
 
     // 旧版无盐 SHA-256 哈希在登录成功后透明升级为 argon2id
     if (PasswordUtils::needsRehash(storedPassword)) {
