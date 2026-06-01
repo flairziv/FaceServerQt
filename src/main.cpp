@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
     FaceRoutes faceRoutes(db, recognizer, loginRateLimiter);
     faceRoutes.registerRoutes(svr);
 
-    UserRoutes userRoutes(db, recognizer);
+    UserRoutes userRoutes(db, recognizer, loginRateLimiter);
     userRoutes.registerRoutes(svr);
 
     AuthRoutes authRoutes;

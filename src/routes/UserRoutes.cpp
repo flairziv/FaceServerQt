@@ -6,8 +6,11 @@
 #include <QJsonArray>
 #include <QDebug>
 
-UserRoutes::UserRoutes(DatabaseManager &db, FaceRecognizer &recognizer)
-    : m_db(db), m_recognizer(recognizer)
+// 新密码最小长度
+static constexpr int kMinPasswordLength = 8;
+
+UserRoutes::UserRoutes(DatabaseManager &db, FaceRecognizer &recognizer, LoginRateLimiter &rateLimiter)
+    : m_db(db), m_recognizer(recognizer), m_rateLimiter(rateLimiter)
 {
 }
 
@@ -185,9 +188,45 @@ void UserRoutes::handleUpdatePassword(const httplib::Request &req, httplib::Resp
         return;
     }
 
+    // 改密失败限流(按 IP+用户名,key 前缀与登录隔离),防止借合法 token 暴力试旧密码
+    const QString rlKey = QStringLiteral("pwd|")
+        + QString::fromStdString(req.remote_addr) + "|" + username;
+    int waitSecs = m_rateLimiter.secondsUntilAllowed(rlKey);
+    if (waitSecs > 0) {
+        response["success"] = false;
+        response["message"] = QString("尝试次数过多,请 %1 秒后再试").arg(waitSecs);
+        res.status = 429;
+        res.set_header("Retry-After", std::to_string(waitSecs));
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json");
+        return;
+    }
+
+    // 新密码强度: 最小长度
+    if (newPassword.length() < kMinPasswordLength) {
+        response["success"] = false;
+        response["message"] = QString("新密码长度不能少于 %1 位").arg(kMinPasswordLength);
+        res.status = 400;
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json");
+        return;
+    }
+
+    // 新密码不能与旧密码相同
+    if (newPassword == oldPassword) {
+        response["success"] = false;
+        response["message"] = "新密码不能与旧密码相同";
+        res.status = 400;
+        res.set_content(QJsonDocument(response).toJson(QJsonDocument::Compact).toStdString(),
+                       "application/json");
+        return;
+    }
+
     // 验证旧密码
     QString storedPassword = m_db.getUserPassword(username);
     if (!PasswordUtils::verifyPassword(oldPassword, storedPassword)) {
+        m_rateLimiter.recordFailure(rlKey);
+        qWarning() << "✗ 用户" << username << "改密时旧密码验证失败";
         response["success"] = false;
         response["message"] = "旧密码错误";
         res.status = 401;
@@ -195,6 +234,9 @@ void UserRoutes::handleUpdatePassword(const httplib::Request &req, httplib::Resp
                        "application/json");
         return;
     }
+
+    // 旧密码正确,清空该 key 的失败计数
+    m_rateLimiter.recordSuccess(rlKey);
 
     // 更新密码(argon2id)
     QString newPasswordHash = PasswordUtils::hashPassword(newPassword);

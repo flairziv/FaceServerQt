@@ -4,11 +4,12 @@
 #include "httplib.h"
 #include "DatabaseManager.h"
 #include "FaceRecognizer.h"
+#include "LoginRateLimiter.h"
 
 class UserRoutes
 {
 public:
-    UserRoutes(DatabaseManager &db, FaceRecognizer &recognizer);
+    UserRoutes(DatabaseManager &db, FaceRecognizer &recognizer, LoginRateLimiter &rateLimiter);
 
     // 注册所有用户相关路由
     void registerRoutes(httplib::Server &svr);
@@ -16,6 +17,7 @@ public:
 private:
     DatabaseManager &m_db;
     FaceRecognizer &m_recognizer;
+    LoginRateLimiter &m_rateLimiter;
 
     // 路由处理器 - 用户管理
     void handleGetUserInfo(const httplib::Request &req, httplib::Response &res);
